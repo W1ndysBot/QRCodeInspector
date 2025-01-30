@@ -11,6 +11,9 @@ import numpy as np
 import threading
 import _thread
 import requests
+import aiohttp
+import asyncio
+from functools import partial
 
 # 添加项目根目录到sys.path
 sys.path.append(
@@ -81,25 +84,25 @@ def check_image_quality(image):
         # 检查亮度
         brightness = np.mean(image)
         if brightness < 30 or brightness > 225:
-            print(f"图像亮度异常: {brightness}")
+            logging.info(f"图像亮度异常: {brightness}")
             return False
 
         # 检查对比度
         contrast = image.std()
         if contrast < 20:
-            print(f"图像对比度过低: {contrast}")
+            logging.info(f"图像对比度过低: {contrast}")
             return False
 
         # 检查模糊度
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
         if laplacian_var < 100:
-            print(f"图像可能模糊: {laplacian_var}")
+            logging.info(f"图像可能模糊: {laplacian_var}")
             return False
 
         return True
     except Exception as e:
-        print(f"检查图像质量时出错: {str(e)}")
+        logging.error(f"检查图像质量时出错: {str(e)}")
         return False
 
 
@@ -228,6 +231,27 @@ def detect_qr_code(image_content):
         return False
 
 
+async def process_image_async(websocket, group_id, user_id, message_id, image_url):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as response:
+                image_content = await response.read()
+
+        # 将同步的 detect_qr_code 函数放在线程池中执行
+        loop = asyncio.get_event_loop()
+        has_qr = await loop.run_in_executor(None, detect_qr_code, image_content)
+
+        if has_qr:
+            await send_group_msg(
+                websocket,
+                group_id,
+                "[CQ:at,qq=" + user_id + "]本群禁止发送二维码，请遵守群规。",
+            )
+            await delete_msg(websocket, message_id)
+    except Exception as e:
+        logging.error(f"处理图片时发生错误: {e}")
+
+
 # 群消息处理函数
 async def handle_QRCodeInspector_group_message(websocket, msg):
     # 确保数据目录存在
@@ -254,21 +278,13 @@ async def handle_QRCodeInspector_group_message(websocket, msg):
                     image_url = image_url.group(1)
                     # 把HTML的转义字符转换为标准的URL
                     image_url = image_url.replace("&amp;", "&").replace("https", "http")
-                    # 获取图片内容
-                    image_content = requests.get(image_url).content
-                    detect_qr_code(image_content)
-                    if detect_qr_code(image_content):
-                        await send_group_msg(
-                            websocket, group_id, "检测到二维码，URL：" + image_url
+                    # 异步处理图片
+                    asyncio.create_task(
+                        process_image_async(
+                            websocket, group_id, user_id, message_id, image_url
                         )
-                    else:
-                        await send_group_msg(
-                            websocket, group_id, "未检测到二维码，URL：" + image_url
-                        )
-                else:
-                    await send_group_msg(
-                        websocket, group_id, "未检测到二维码，请检查图片是否清晰"
                     )
+
     except Exception as e:
         logging.error(f"处理QRCodeInspector群消息失败: {e}")
         await send_group_msg(
