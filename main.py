@@ -11,7 +11,6 @@ import numpy as np
 import threading
 import _thread
 import requests
-from pyzbar.pyzbar import decode
 
 # 添加项目根目录到sys.path
 sys.path.append(
@@ -196,15 +195,11 @@ def detect_qr_code(image_url):
         timer.start()
 
         try:
-            # 替换微信二维码检测器相关代码
-            def decode_qr(test_image):
-                return [code.data.decode('utf-8') for code in decode(test_image)]
-
             # 在所有处理后的图像上尝试检测
             decoded_text = []
             for test_image in processed_images:
-                current_decoded_text = decode_qr(test_image)
-                if current_decoded_text:
+                current_decoded_text, _ = detector.detectAndDecode(test_image)
+                if len(current_decoded_text) > 0:
                     decoded_text.extend(current_decoded_text)
 
             # 去重结果
