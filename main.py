@@ -11,6 +11,7 @@ import numpy as np
 import threading
 import _thread
 import requests
+from pyzbar.pyzbar import decode
 
 # 添加项目根目录到sys.path
 sys.path.append(
@@ -195,11 +196,15 @@ def detect_qr_code(image_url):
         timer.start()
 
         try:
+            # 替换微信二维码检测器相关代码
+            def decode_qr(test_image):
+                return [code.data.decode('utf-8') for code in decode(test_image)]
+
             # 在所有处理后的图像上尝试检测
             decoded_text = []
             for test_image in processed_images:
-                current_decoded_text, _ = detector.detectAndDecode(test_image)
-                if len(current_decoded_text) > 0:
+                current_decoded_text = decode_qr(test_image)
+                if current_decoded_text:
                     decoded_text.extend(current_decoded_text)
 
             # 去重结果
@@ -247,11 +252,13 @@ async def handle_QRCodeInspector_group_message(websocket, msg):
             # 检测二维码
             if "CQ:image" in raw_message:
                 # 获取图片url
-                image_url = re.search(r'url="([^"]+)"', raw_message).group(1)
-                detect_qr_code(image_url)
-                await send_group_msg(websocket, group_id, "检测到二维码")
-            else:
-                await send_group_msg(websocket, group_id, "未检测到二维码")
+                image_url = re.search(r'url="([^"]+)"', raw_message)
+                if image_url:
+                    image_url = image_url.group(1)
+                    detect_qr_code(image_url)
+                    await send_group_msg(websocket, group_id, "检测到二维码")
+                else:
+                    await send_group_msg(websocket, group_id, "未检测到二维码")
     except Exception as e:
         logging.error(f"处理QRCodeInspector群消息失败: {e}")
         await send_group_msg(
