@@ -296,9 +296,8 @@ async def handle_QRCodeInspector_group_message(websocket, msg):
 
 
 # 回应事件处理函数
-async def handle_QRCodeInspector_response_message(websocket, message):
+async def handle_QRCodeInspector_response_message(websocket, msg):
     try:
-        msg = json.loads(message)
 
         if msg.get("status") == "ok":
             echo = msg.get("echo")
